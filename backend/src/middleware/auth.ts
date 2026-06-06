@@ -11,22 +11,22 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const ACCESS_SECRET = process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || 'fallback_secret';
 
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   const header = req.headers.authorization;
 
   if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing authorization token' });
+    res.status(401).json({ success: false, message: 'Missing authorization token' });
     return;
   }
 
   try {
     const token = header.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload & AuthenticatedUser;
+    const decoded = jwt.verify(token, ACCESS_SECRET) as jwt.JwtPayload & AuthenticatedUser;
 
     if (!decoded.userId) {
-      res.status(401).json({ error: 'Invalid authorization token' });
+      res.status(401).json({ success: false, message: 'Invalid authorization token' });
       return;
     }
 
@@ -38,22 +38,27 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
     next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 };
 
-export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
-  const user = (req as AuthenticatedRequest).user;
+export const authorize =
+  (...roles: string[]) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    const user = (req as AuthenticatedRequest).user;
 
-  if (!user) {
-    res.status(401).json({ error: 'Missing authorization token' });
-    return;
-  }
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
 
-  if (user.role === 'VOTER') {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
+    if (!roles.includes(user.role)) {
+      res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      return;
+    }
 
-  next();
-};
+    next();
+  };
+
+// Convenience alias
+export const requireAdmin = authorize('ADMIN');

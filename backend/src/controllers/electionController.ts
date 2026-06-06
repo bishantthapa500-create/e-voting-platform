@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import prisma from '../config/prisma';
+import { Election } from '../models/Election';
 
 const isValidDate = (value: unknown): value is Date => value instanceof Date && !Number.isNaN(value.getTime());
 
@@ -50,14 +50,12 @@ export const createElection = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const election = await prisma.election.create({
-      data: {
-        title,
-        description: description || null,
-        startDate,
-        endDate,
-        isActive,
-      },
+    const election = await Election.create({
+      title,
+      description: description || undefined,
+      startDate,
+      endDate,
+      isActive,
     });
 
     res.status(201).json({ message: 'Election created', election });
@@ -69,11 +67,7 @@ export const createElection = async (req: Request, res: Response): Promise<void>
 
 export const exportElectionReportCsv = async (req: Request, res: Response): Promise<void> => {
   try {
-    const elections = await prisma.election.findMany({
-      orderBy: {
-        startDate: 'asc',
-      },
-    });
+    const elections = await Election.find({}).sort({ startDate: 1 }).lean();
 
     const now = new Date();
 
@@ -93,15 +87,16 @@ export const exportElectionReportCsv = async (req: Request, res: Response): Prom
     );
 
     for (const election of elections) {
-      const status = election.isActive && election.startDate <= now && election.endDate >= now
-        ? 'Live'
-        : election.startDate > now
-          ? 'Upcoming'
-          : 'Closed';
+      const status =
+        election.isActive && election.startDate <= now && election.endDate >= now
+          ? 'Live'
+          : election.startDate > now
+            ? 'Upcoming'
+            : 'Closed';
 
       rows.push(
         [
-          csvEscape(election.id),
+          csvEscape(election._id.toString()),
           csvEscape(election.title),
           csvEscape(election.description ?? ''),
           csvEscape(election.startDate.toISOString()),

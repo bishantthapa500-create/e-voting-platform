@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import prisma from '../config/prisma';
+import { User } from '../models/User';
+import { Election } from '../models/Election';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 type DashboardElection = {
@@ -112,27 +113,17 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
     const authenticatedRequest = req as AuthenticatedRequest;
 
     const [users, elections] = await Promise.all([
-      prisma.user.findMany({
-        select: {
-          id: true,
-          role: true,
-          email: true,
-          createdAt: true,
-        },
-      }),
-      prisma.election.findMany({
-        orderBy: {
-          startDate: 'asc',
-        },
-      }),
+      User.find({}, { _id: 1, role: 1, email: 1, createdAt: 1 }).lean(),
+      Election.find({}).sort({ startDate: 1 }).lean(),
     ]);
 
     const now = new Date();
     const dataMode = elections.length > 0 ? 'database' : 'demo';
+
     const mappedElections: DashboardElection[] =
       elections.length > 0
         ? elections.map((election) => ({
-            id: election.id,
+            id: election._id.toString(),
             title: election.title,
             description: election.description || 'Managed election record',
             status: buildElectionStatus(election.startDate, election.endDate, election.isActive),
@@ -143,11 +134,11 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
           }))
         : buildDemoElections();
 
-    const liveElections = mappedElections.filter((election) => election.status === 'Live').length;
-    const upcomingElections = mappedElections.filter((election) => election.status === 'Upcoming').length;
-    const closedElections = mappedElections.filter((election) => election.status === 'Closed').length;
-    const voterCount = users.filter((user) => user.role === 'VOTER').length;
-    const adminCount = users.filter((user) => user.role !== 'VOTER').length;
+    const liveElections = mappedElections.filter((e) => e.status === 'Live').length;
+    const upcomingElections = mappedElections.filter((e) => e.status === 'Upcoming').length;
+    const closedElections = mappedElections.filter((e) => e.status === 'Closed').length;
+    const voterCount = users.filter((u) => u.role === 'VOTER').length;
+    const adminCount = users.filter((u) => u.role === 'ADMIN').length;
 
     const securityChecks = [
       { label: 'Password hashing', value: 'Enabled', tone: 'good' },
@@ -194,7 +185,8 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
       summary: {
         totalElections: mappedElections.length,
         closedElections,
-        liveElectionRate: mappedElections.length > 0 ? Math.round((liveElections / mappedElections.length) * 100) : 0,
+        liveElectionRate:
+          mappedElections.length > 0 ? Math.round((liveElections / mappedElections.length) * 100) : 0,
       },
     };
 

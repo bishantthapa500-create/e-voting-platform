@@ -1,10 +1,14 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Force Node.js c-ares to use public DNS — router DNS blocks external queries
+import dns from 'dns';
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import mongoSanitize from 'express-mongo-sanitize';
+import { mongoSanitize } from './middleware/sanitize';
 import mongoose from 'mongoose';
 
 import { connectDB } from './config/db';
@@ -38,7 +42,7 @@ app.use(
 app.use(express.json({ limit: '10kb' }));
 
 // ── Sanitize MongoDB operators in req.body / req.query / req.params ───────────
-app.use(mongoSanitize());
+app.use(mongoSanitize);
 
 // ── Global rate limiter ───────────────────────────────────────────────────────
 app.use(globalLimiter);

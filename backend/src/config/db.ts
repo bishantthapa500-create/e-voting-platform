@@ -2,9 +2,6 @@ import mongoose from 'mongoose';
 import dns from 'dns';
 import { promisify } from 'util';
 
-// Force Node.js c-ares to use reliable public DNS instead of the broken router/ISP DNS
-dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-
 const resolveSrv = promisify(dns.resolveSrv);
 
 /**

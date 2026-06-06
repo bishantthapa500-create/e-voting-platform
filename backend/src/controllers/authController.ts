@@ -142,6 +142,7 @@ export const resendOTP = async (req: Request, res: Response): Promise<void> => {
 
   const otp = generateOTP();
   user.otpCode = otp;
+  console.log(otp);
   user.otpExpiry = otpExpiry();
   await user.save();
 

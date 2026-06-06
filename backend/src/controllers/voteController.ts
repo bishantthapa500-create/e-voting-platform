@@ -10,7 +10,9 @@ import { sendVoteConfirmation } from '../services/emailService';
 // ─── Cast Vote ────────────────────────────────────────────────────────────────
 export const castVote = async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthenticatedRequest).user!;
-  const { electionId, candidateId } = req.body as { electionId?: string; candidateId?: string };
+  const body = req.body as { electionId?: unknown; candidateId?: unknown };
+  const electionId = typeof body.electionId === 'string' ? body.electionId : undefined;
+  const candidateId = typeof body.candidateId === 'string' ? body.candidateId : undefined;
 
   if (!electionId || !candidateId) {
     res.status(400).json({ success: false, message: 'electionId and candidateId are required' });
@@ -92,7 +94,7 @@ export const castVote = async (req: Request, res: Response): Promise<void> => {
 // ─── Vote Status ──────────────────────────────────────────────────────────────
 export const getVoteStatus = async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthenticatedRequest).user!;
-  const { electionId } = req.params;
+  const electionId = String(req.params['electionId'] ?? '');
 
   if (!mongoose.isValidObjectId(electionId)) {
     res.status(400).json({ success: false, message: 'Invalid election ID' });

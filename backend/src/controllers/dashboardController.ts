@@ -21,29 +21,22 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 });
 
-const buildElectionStatus = (startDate: Date, endDate: Date, isActive: boolean): DashboardElection['status'] => {
+const buildDisplayStatus = (
+  startTime: Date,
+  endTime: Date,
+  status: string,
+): DashboardElection['status'] => {
   const now = new Date();
-
-  if (isActive && startDate <= now && endDate >= now) {
-    return 'Live';
-  }
-
-  if (startDate > now) {
-    return 'Upcoming';
-  }
-
+  if (status === 'active' && startTime <= now && endTime >= now) return 'Live';
+  if (startTime > now) return 'Upcoming';
   return 'Closed';
 };
 
-const buildProgress = (startDate: Date, endDate: Date): number => {
+const buildProgress = (startTime: Date, endTime: Date): number => {
   const now = new Date();
-  const total = endDate.getTime() - startDate.getTime();
-
-  if (total <= 0) {
-    return 100;
-  }
-
-  const elapsed = Math.min(Math.max(now.getTime() - startDate.getTime(), 0), total);
+  const total = endTime.getTime() - startTime.getTime();
+  if (total <= 0) return 100;
+  const elapsed = Math.min(Math.max(now.getTime() - startTime.getTime(), 0), total);
   return Math.round((elapsed / total) * 100);
 };
 
@@ -90,109 +83,82 @@ const buildDemoElections = (): DashboardElection[] => {
   ];
 };
 
-const buildDemoActivities = () => [
-  {
-    title: 'Secure login confirmed',
-    detail: 'OTP and JWT verification completed for the current session.',
-    time: '2 minutes ago',
-  },
-  {
-    title: 'Election turnout updated',
-    detail: 'Live participation metrics refreshed for the active ballot.',
-    time: '11 minutes ago',
-  },
-  {
-    title: 'Audit log synced',
-    detail: 'Recent admin activity was written to the secure activity stream.',
-    time: '1 hour ago',
-  },
-];
-
 export const getDashboardOverview = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const authenticatedRequest = req as AuthenticatedRequest;
+  const authenticatedRequest = req as AuthenticatedRequest;
 
-    const [users, elections] = await Promise.all([
-      User.find({}, { _id: 1, role: 1, email: 1, createdAt: 1 }).lean(),
-      Election.find({}).sort({ startDate: 1 }).lean(),
-    ]);
+  const [users, elections] = await Promise.all([
+    User.find({}, { _id: 1, role: 1, email: 1, createdAt: 1 }).lean(),
+    Election.find({}).sort({ startTime: 1 }).lean(),
+  ]);
 
-    const now = new Date();
-    const dataMode = elections.length > 0 ? 'database' : 'demo';
+  const now = new Date();
+  const dataMode = elections.length > 0 ? 'database' : 'demo';
 
-    const mappedElections: DashboardElection[] =
-      elections.length > 0
-        ? elections.map((election) => ({
+  const mappedElections: DashboardElection[] =
+    elections.length > 0
+      ? elections.map((election) => {
+          const displayStatus = buildDisplayStatus(election.startTime, election.endTime, election.status);
+          return {
             id: election._id.toString(),
             title: election.title,
             description: election.description || 'Managed election record',
-            status: buildElectionStatus(election.startDate, election.endDate, election.isActive),
-            startDate: election.startDate.toISOString(),
-            endDate: election.endDate.toISOString(),
-            progress: buildProgress(election.startDate, election.endDate),
-            label: election.isActive ? 'Voting active' : election.startDate > now ? 'Scheduled' : 'Closed',
-          }))
-        : buildDemoElections();
+            status: displayStatus,
+            startDate: election.startTime.toISOString(),
+            endDate: election.endTime.toISOString(),
+            progress: buildProgress(election.startTime, election.endTime),
+            label:
+              election.status === 'active'
+                ? 'Voting active'
+                : election.startTime > now
+                  ? 'Scheduled'
+                  : 'Closed',
+          };
+        })
+      : buildDemoElections();
 
-    const liveElections = mappedElections.filter((e) => e.status === 'Live').length;
-    const upcomingElections = mappedElections.filter((e) => e.status === 'Upcoming').length;
-    const closedElections = mappedElections.filter((e) => e.status === 'Closed').length;
-    const voterCount = users.filter((u) => u.role === 'VOTER').length;
-    const adminCount = users.filter((u) => u.role === 'ADMIN').length;
+  const liveElections = mappedElections.filter((e) => e.status === 'Live').length;
+  const upcomingElections = mappedElections.filter((e) => e.status === 'Upcoming').length;
+  const closedElections = mappedElections.filter((e) => e.status === 'Closed').length;
+  const voterCount = users.filter((u) => u.role === 'VOTER').length;
+  const adminCount = users.filter((u) => u.role === 'ADMIN').length;
 
-    const securityChecks = [
-      { label: 'Password hashing', value: 'Enabled', tone: 'good' },
-      { label: 'JWT session control', value: 'Enabled', tone: 'good' },
-      { label: 'One-vote enforcement', value: 'Planned', tone: 'warn' },
-      { label: 'Activity logging', value: 'Enabled', tone: 'good' },
-    ];
-
-    const response = {
+  res.json({
+    success: true,
+    data: {
       user: authenticatedRequest.user ?? null,
       dataMode,
       metrics: [
-        {
-          label: 'Live elections',
-          value: liveElections,
-          note: 'Voting windows currently open',
-        },
-        {
-          label: 'Upcoming elections',
-          value: upcomingElections,
-          note: 'Scheduled and awaiting activation',
-        },
-        {
-          label: 'Registered voters',
-          value: voterCount,
-          note: 'Accounts available for participation',
-        },
-        {
-          label: 'Admin users',
-          value: adminCount,
-          note: 'Trusted election administrators',
-        },
+        { label: 'Live elections', value: liveElections, note: 'Voting windows currently open' },
+        { label: 'Upcoming elections', value: upcomingElections, note: 'Scheduled and awaiting activation' },
+        { label: 'Registered voters', value: voterCount, note: 'Accounts available for participation' },
+        { label: 'Admin users', value: adminCount, note: 'Trusted election administrators' },
       ],
       elections: mappedElections,
-      securityChecks,
+      securityChecks: [
+        { label: 'Password hashing', value: 'bcrypt 12 rounds', tone: 'good' },
+        { label: 'JWT access tokens', value: '15 min expiry', tone: 'good' },
+        { label: 'One-vote enforcement', value: 'Atomic + DB index', tone: 'good' },
+        { label: 'Vote encryption', value: 'AES-256-GCM', tone: 'good' },
+        { label: 'Audit logging', value: 'Enabled', tone: 'good' },
+        { label: 'Rate limiting', value: 'Enabled', tone: 'good' },
+      ],
       activity:
         elections.length > 0
           ? elections.slice(0, 4).map((election) => ({
               title: election.title,
-              detail: `Election stored in the secure database and ${election.isActive ? 'currently active' : 'ready for review'}.`,
+              detail: `Election ${election.status === 'active' ? 'currently active' : 'ready for review'}.`,
               time: dateFormatter.format(election.updatedAt),
             }))
-          : buildDemoActivities(),
+          : [
+              { title: 'Secure login confirmed', detail: 'JWT verified for current session.', time: '2 minutes ago' },
+              { title: 'Election turnout updated', detail: 'Live participation metrics refreshed.', time: '11 minutes ago' },
+            ],
       summary: {
         totalElections: mappedElections.length,
         closedElections,
         liveElectionRate:
           mappedElections.length > 0 ? Math.round((liveElections / mappedElections.length) * 100) : 0,
       },
-    };
-
-    res.json(response);
-  } catch (error) {
-    console.error('Dashboard overview error:', error);
-    res.status(500).json({ error: 'Failed to load dashboard overview' });
-  }
+    },
+  });
 };
